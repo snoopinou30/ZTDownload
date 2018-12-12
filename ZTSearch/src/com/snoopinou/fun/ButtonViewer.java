@@ -1,11 +1,14 @@
+
 package com.snoopinou.fun;
 import java.awt.BorderLayout;
 import java.awt.Desktop;
 import java.awt.GridLayout;
+import java.awt.Toolkit;
+import java.awt.datatransfer.Clipboard;
+import java.awt.datatransfer.StringSelection;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.IOException;
-import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLEncoder;
@@ -14,25 +17,42 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 
+import javax.swing.ButtonGroup;
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JFrame;
 import javax.swing.JMenu;
 import javax.swing.JMenuBar;
 import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JRadioButton;
 import javax.swing.JScrollPane;
 import javax.swing.JTextField;
 
 public class ButtonViewer extends JFrame{
+	
+	static DebugViewer debug = new DebugViewer();
 	
 	JPanel buttonPanel;
 	JTextField search = new JTextField();
 	JScrollPane scrollPane;
 	
 	JMenuBar menuBar = new JMenuBar();
+	
 	JMenu file = new JMenu("File");
+	JMenuItem debugItem = new JMenuItem("Debug");
 	JMenuItem login = new JMenuItem("Login");
+	
+	JMenu param = new JMenu("Parameters");
+	
+	JRadioButton radioBrowser = new JRadioButton("Open In Browser");
+	JRadioButton radioClipboard = new JRadioButton("Copy to clipboard");
+	JRadioButton radioPrint = new JRadioButton("Show in a window");
+	
+	JCheckBox checkDebrid = new JCheckBox("Use AllDebrid");
+	
+	ButtonGroup bg = new ButtonGroup();
 	
 	String stringURL = "";
 	
@@ -41,7 +61,6 @@ public class ButtonViewer extends JFrame{
 	final String ALLDEBRID_API = "https://api.alldebrid.com";
 	String token = null;
 	
-	boolean verbose = true;
 	
 	
 	String username = null;
@@ -63,10 +82,32 @@ public class ButtonViewer extends JFrame{
 		this.getContentPane().add(search, BorderLayout.NORTH);
 		
 		// Menu
+		bg.add(radioBrowser);
+		bg.add(radioClipboard);
+		bg.add(radioPrint);
+		radioBrowser.setSelected(true);
+		
+		
 		this.setJMenuBar(menuBar);
 		login.addActionListener(new LoginListener());
+		debugItem.addActionListener(new DebugListener());
+		
 		file.add(login);
+		file.addSeparator();
+		file.add(debugItem);
+		
+		param.add(radioBrowser);
+		param.add(radioClipboard);
+		param.add(radioPrint);
+		
+		param.addSeparator();
+		
+		param.add(checkDebrid);
+		
+		
 		menuBar.add(file);
+		menuBar.add(param);
+		
 		
 		// Buttons
 		buttonPanel = new JPanel();
@@ -80,19 +121,22 @@ public class ButtonViewer extends JFrame{
 	}
 	
 	
-	private Map<String, String> buildRequestParam() {
-
+	private Map<String, String> buildSearchParam() {
+		
 		HashMap<String, String> map = new HashMap<String, String>();
-		map.put("do", "search");
+//		map.put("do", "search");
 		map.put("subaction", "search");
 		map.put("story", search.getText());
 		
 		return map;
 	}
 	
+	
+	// Fill panel with Buttons of Search Result
 	public void fillWithButtons(Map<String,String> map) {
 		if(map.isEmpty()) {
 			JOptionPane.showMessageDialog(null, "No Result found", "Error", JOptionPane.ERROR_MESSAGE);
+			debug.println("No result found.", DebugViewer.LIGHT);
 		}else {
 			buttonPanel = new JPanel();
 			buttonPanel.setLayout(new GridLayout(0,2));
@@ -108,12 +152,20 @@ public class ButtonViewer extends JFrame{
 	}
 	
 	
-	// Decompose notre recherche et isole les liens
+	
+	
+	// Decompose notre recherche et isole les liens des differents films
 	public Map<String,String> decomposeSearchResult(String response) {
 		
 		HashMap<String,String> map = new HashMap<String,String>();
 		String url = null;
 		String carac = "";
+		
+		if(response.contains("503 Service Unavailable")) {
+			JOptionPane.showMessageDialog(null, "Error 503 : Service is currently unavailable. Try again later.", "ERROR 503", JOptionPane.ERROR_MESSAGE);
+			debug.println("Error 503 : Unavailable", DebugViewer.LIGHT);
+			return null;
+		}
 		
 		String advancement = response;
 		while(advancement.indexOf("href=\"https://www.annuaire-telechargement.com") != -1) {
@@ -161,7 +213,9 @@ public class ButtonViewer extends JFrame{
 		}
 		return map;
 	}
-
+	
+	
+	
 	
 	// Decompose la page du film et obtient les liens
 	public List<String> decomposeDownloadResult(String response){
@@ -193,6 +247,8 @@ public class ButtonViewer extends JFrame{
 	}
 	
 	
+	
+	// Get identification token
 	public void getToken() {
 		HashMap<String, String> params = new HashMap<String, String>();
 		params.put("username", username);
@@ -207,8 +263,10 @@ public class ButtonViewer extends JFrame{
 				JOptionPane.showMessageDialog(null, "Authentification Successful", "Success", JOptionPane.PLAIN_MESSAGE);
 			}else {
 				JOptionPane.showMessageDialog(null, "Check your credentials", "Error", JOptionPane.ERROR_MESSAGE);
-				System.out.println(response);
+				debug.println("Wrong credentials.", DebugViewer.LIGHT);
 			}
+			// Print output
+			debug.println(response, DebugViewer.HEAVY);
 		} catch (IOException e) {
 			e.printStackTrace();
 			
@@ -254,7 +312,7 @@ public class ButtonViewer extends JFrame{
 			
 			advancement = advancement.substring(endIndex+1);
 		}
-				
+		
 		return links;
 	}
 	
@@ -293,9 +351,10 @@ public class ButtonViewer extends JFrame{
 	public List<String> debridAll (List<String> links) {
 		if(token == null) {
 			JOptionPane.showMessageDialog(null, "Enter your login credentials first.", "ERROR", JOptionPane.ERROR_MESSAGE);
+			debug.println("No credentials entered.", DebugViewer.LIGHT);
 			return null;
 		}else {
-
+			
 			// All my links to debrid after bypassing
 			LinkedList<String> linksToDebrid = new LinkedList<String>();
 			LinkedList<String> debridedLinks = new LinkedList<String>();
@@ -318,9 +377,36 @@ public class ButtonViewer extends JFrame{
 		}
 	}
 	
-	
-	public void downloadAll(List<String> links) {
+	public String encodeLink(String link) throws IOException {
 		
+		String linkEncoded = "";
+		
+		String strs[] = link.split("/");
+		
+		String last = strs[strs.length-1];
+		String lastEncoded = URLEncoder.encode(last, "UTF-8");
+		strs[strs.length-1] = lastEncoded;
+		
+		for(String str : strs) {
+			linkEncoded += str +"/";
+		}
+		linkEncoded = linkEncoded.substring(0, linkEncoded.length()-1);
+		
+		
+		return linkEncoded;
+	}
+	
+	
+	
+	class DebugListener implements ActionListener{
+		@Override
+		public void actionPerformed(ActionEvent e) {
+			DialogDebug dLog = new DialogDebug();
+			String credentials = dLog.showDialog();
+			if(credentials.equals("admin")) {
+				debug.setVisible(true);
+			}
+		}
 	}
 	
 	
@@ -344,9 +430,9 @@ public class ButtonViewer extends JFrame{
 			new Thread(new Runnable() {
 				@Override
 				public void run() {
-					HttpRequest req = new HttpRequest(stringURL);
+					HttpRequest req = new HttpRequest(stringURL+"/index.php?do=search");
 					try {
-						String str = req.doPostRequest(buildRequestParam());
+						String str = req.doPostRequest(buildSearchParam());
 						fillWithButtons(decomposeSearchResult(str));
 					} catch (IOException e1) {
 						e1.printStackTrace();
@@ -374,40 +460,75 @@ public class ButtonViewer extends JFrame{
 					try {
 						String response = req.doGetRequest(null);
 						
-						
+						// Gets download link from page
 						List<String> list = decomposeDownloadResult(response);
 						
 						
-						List<String> toDownload = debridAll(list);
+						List<String> toDownload;
+						if(checkDebrid.isSelected()) {
+							// Bypass redirectors then debrid
+							toDownload = debridAll(list);
+							debug.println("Using AllDebrid", DebugViewer.LIGHT);
+						}else {
+							toDownload = list;
+							debug.println("Not Using AllDebrid", DebugViewer.LIGHT);
+						}
 						
+						
+						
+						int choiceOutput = 0;
+						
+						TextViewer viewer = new TextViewer();
+						Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
+						String allLink = "";
+						
+						
+						if(radioBrowser.isSelected())
+							choiceOutput = 1;
+						if(radioClipboard.isSelected())
+							choiceOutput = 2;
+						if(radioPrint.isSelected())
+							choiceOutput = 3;
+						
+						
+						
+						// Itere les liens. On voit si on encode ou sinon on rajoute directement a la liste
 						for(String link : toDownload) {
-							if(verbose) {
-								System.out.println("Link is : "+link);
+							
+							
+							// Si pour navigateur on encoded directement
+							if(choiceOutput == 1) {
+								String linkEncoded = encodeLink(link);
+								allLink += linkEncoded +"\n";
+								
+								debug.println("Encoded link is : "+linkEncoded, DebugViewer.LIGHT);
+							}else {
+								allLink += link + "\n";
+
+								debug.println("Link is : "+link, DebugViewer.LIGHT);
 							}
-							
-//							Desktop.getDesktop().browse(new URI(link));
-							
-							String strs[] = link.split("/");
-							
-							String last = strs[strs.length-1];
-							String lastEncoded = URLEncoder.encode(last, "UTF-8");
-							strs[strs.length-1] = lastEncoded;
-							
-							String linkEncoded = "";
-							for(String str : strs) {
-								linkEncoded += str +"/";
+						}
+						
+						
+						/* 1 = Browser
+						 * 2 = Clipboard
+						 * 3 = Print	
+						 */
+						
+						switch(choiceOutput) {
+						case 1:
+							for(String str : allLink.split("\n")) {
+								Desktop.getDesktop().browse(new URL(str).toURI());
 							}
-							linkEncoded = linkEncoded.substring(0, linkEncoded.length()-1);
-							
-							if(verbose) {
-								System.out.println("Encoded link is : "+linkEncoded);
-							}
-							
-							Desktop.getDesktop().browse(new URL(linkEncoded).toURI());
-							
-//							Desktop.getDesktop().browse(new URL(link).toURI());
-							
-//							Desktop.getDesktop().browse(new URI(URLEncoder.encode(link, "UTF-8")));
+							break;
+						case 2:
+							clipboard.setContents(new StringSelection(allLink), null);
+							JOptionPane.showMessageDialog(null, "Copied all links to clipboard","Copy finish", JOptionPane.INFORMATION_MESSAGE);
+							break;
+						case 3:
+							viewer.setText(allLink);
+							viewer.setVisible(true);
+							break;
 						}
 						
 						

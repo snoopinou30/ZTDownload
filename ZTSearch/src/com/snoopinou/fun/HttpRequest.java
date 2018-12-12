@@ -11,13 +11,14 @@ import java.util.Map;
 public class HttpRequest {
 	
 	
+	DebugViewer debug = ButtonViewer.debug;
+	
 //	final String USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36";
 //	final String AGENT = "snoopinou";
 	
 	String stringURL;
 	HttpURLConnection con;
 	
-	boolean verbose = true;
 	
 	
 	public HttpRequest(String stringURLp) {
@@ -29,15 +30,11 @@ public class HttpRequest {
 		connect();
 		addBodyParameters(requestParam);
 		
-		if(verbose) {
-			System.out.println("Doing a POST request at "+ con.getURL()+"\n");
-		}
+		debug.println("Doing a POST request at "+ con.getURL()+" with arguments "+buildString(requestParam), DebugViewer.LIGHT);
 		
 		String response = getResponse();
 		
-		if(verbose) {
-			System.out.println("Response is : "+response+"\n");
-		}
+		debug.println("Response is : "+response, DebugViewer.HEAVY);
 		
 		return response;
 	}
@@ -46,14 +43,22 @@ public class HttpRequest {
 		addURLParameters(requestParam);
 		connect();
 		
-		if(verbose) {
-			System.out.println("Doing a GET request at "+ con.getURL()+"\n");
-		}
+		debug.println("Doing a GET request at "+ con.getURL(), DebugViewer.LIGHT);
 		
 		String response = getResponse();
 		
-		if(verbose) {
-			System.out.println("Response is : "+response+"\n");
+		debug.println("Response is : "+response, DebugViewer.HEAVY);
+		if(response.contains("errorCode")) {
+			String code = "no Code";
+			String str = response;
+			
+			// Only get the errorcode (in json format)
+			str = str.substring(str.indexOf("errorCode")+1);
+			str = str.substring(str.indexOf('"')+2);
+			
+			code = str.substring(0, str.length()-2);
+			
+			debug.println("Error Code is : "+code, DebugViewer.LIGHT);
 		}
 		
 		return response;
@@ -85,7 +90,7 @@ public class HttpRequest {
 		}
 	}
 	
-
+	
 	// Add to the connection body the parameters
 	private void addBodyParameters(Map<String, String> param) throws IOException {
 		con.setDoOutput(true);
